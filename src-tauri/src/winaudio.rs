@@ -8,7 +8,7 @@ use std::ffi::c_void;
 use windows::core::{interface, IUnknown, IUnknown_Vtbl, GUID, HRESULT, PCWSTR};
 use windows::Win32::Devices::FunctionDiscovery::PKEY_Device_FriendlyName;
 use windows::Win32::Media::Audio::{
-    eCapture, eCommunications, eConsole, eMultimedia, ERole, IMMDeviceEnumerator, MMDeviceEnumerator,
+    eCapture, eCommunications, eConsole, eMultimedia, eRender, ERole, IMMDeviceEnumerator, MMDeviceEnumerator,
     DEVICE_STATE_ACTIVE,
 };
 use windows::Win32::System::Com::{
@@ -64,6 +64,12 @@ pub fn default_capture_id() -> windows::core::Result<String> {
     Ok(pwstr_to_string(unsafe { dev.GetId()? }))
 }
 
+pub fn default_render_id() -> windows::core::Result<String> {
+    let en = enumerator()?;
+    let dev = unsafe { en.GetDefaultAudioEndpoint(eRender, eConsole)? };
+    Ok(pwstr_to_string(unsafe { dev.GetId()? }))
+}
+
 pub fn list_capture() -> windows::core::Result<Vec<CaptureDevice>> {
     let en = enumerator()?;
     let default_id = default_capture_id().unwrap_or_default();
@@ -84,7 +90,12 @@ pub fn list_capture() -> windows::core::Result<Vec<CaptureDevice>> {
     Ok(out)
 }
 
+/// Makes `id` the default device for all roles. Works for playback and recording endpoints.
 pub fn set_default_capture(id: &str) -> windows::core::Result<()> {
+    set_default_endpoint(id)
+}
+
+pub fn set_default_endpoint(id: &str) -> windows::core::Result<()> {
     com_init();
     let policy: IPolicyConfig = unsafe { CoCreateInstance(&CLSID_POLICY_CONFIG, None, CLSCTX_ALL)? };
     let wide: Vec<u16> = id.encode_utf16().chain(std::iter::once(0)).collect();

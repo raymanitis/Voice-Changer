@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.2.1
+
+### Fixed
+- Setting up the virtual microphone no longer leaves your speakers and microphone switched to the virtual cable. VoxShift puts your normal Windows sound devices back right after the driver installs.
+
 ## 2.2.0
 
 ### New

@@ -150,7 +150,19 @@ pub fn install(app: &AppHandle) -> Result<(), String> {
     stage(app, "install");
     // Developer switch: exercise download + signature check without touching the system.
     if std::env::var_os("VOXSHIFT_CABLE_DRYRUN").is_none() {
-        run_elevated(&exe, "-i -h")?;
+        // The VB-Cable installer makes the cable the Windows default speaker and mic, which
+        // would silence the user's speakers. Remember the current defaults and put them back.
+        let prev_render = crate::winaudio::default_render_id().ok();
+        let prev_capture = crate::winaudio::default_capture_id().ok();
+        let result = run_elevated(&exe, "-i -h");
+        // Windows can switch defaults a moment after the new devices appear, so restore twice.
+        for delay in [500u64, 3000] {
+            std::thread::sleep(std::time::Duration::from_millis(delay));
+            for id in [&prev_render, &prev_capture].into_iter().flatten() {
+                let _ = crate::winaudio::set_default_endpoint(id);
+            }
+        }
+        result?;
     }
     let _ = std::fs::remove_dir_all(&dir);
     stage(app, "done");
