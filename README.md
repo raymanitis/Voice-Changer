@@ -25,12 +25,13 @@ The installer is not code-signed, so Windows SmartScreen may warn you: click **M
 
 ## Use it in Discord, games, OBS and browsers
 
-VoxShift sends its audio through a virtual audio cable, which Windows then treats as a microphone.
+VoxShift sends its audio through a virtual microphone (the free VB-Audio Virtual Cable driver), which Windows treats as a normal mic.
 
-1. Install the free [VB-Audio Virtual Cable](https://vb-audio.com/Cable/) once and restart VoxShift.
-2. Pick your real microphone in VoxShift.
-3. Turn on **Use in all apps** and press **Start**.
-4. Apps using the **Default** microphone now hear your changed voice. For apps that have a specific mic selected, choose **CABLE Output** there.
+1. Turn on **Use in all apps**. The first time, VoxShift downloads the official driver from vb-audio.com, checks its signature and installs it. Windows asks for permission once.
+2. Pick your real microphone and press **Start**.
+3. Apps using the **Default** microphone now hear your changed voice. For apps that have a specific mic selected, choose **CABLE Output** there.
+
+VB-CABLE is donationware by [VB-Audio Software](https://vb-audio.com/Cable/).
 
 ## Develop
 

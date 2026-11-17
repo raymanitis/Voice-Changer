@@ -382,7 +382,10 @@
     if (!TAURI) throw new Error('“Use in all apps” works in the desktop app only.');
     await refreshDevices();
     const cable = findCableOut();
-    if (!cable) throw new Error('Install VB-Audio Virtual Cable first (Audio setup → How it works), then restart VoxShift.');
+    if (!cable) {
+      openCableModal(true, true);
+      throw new Error('Set up the virtual microphone first.');
+    }
     if (S.outputId !== cable.deviceId) {
       S.outputBeforeSystem = S.outputId;
       S.outputId = cable.deviceId;
@@ -431,6 +434,14 @@
       renderToggles();
       return;
     }
+    if (on && !findCableOut()) {
+      await refreshDevices();
+      if (!findCableOut()) {
+        renderToggles();
+        openCableModal(true, true);
+        return;
+      }
+    }
     S.systemMic = on;
     if (!on && S.outputBeforeSystem !== null) {
       S.outputId = S.outputBeforeSystem;
@@ -451,6 +462,115 @@
   }
   $('qSystem').addEventListener('click', () => setSystemMic(!S.systemMic));
   $('tglSystem').addEventListener('change', (e) => setSystemMic(e.target.checked));
+
+  // ---------- virtual microphone setup (VB-Audio Virtual Cable) ----------
+  const CABLE_STEPS = ['download', 'verify', 'install', 'detect'];
+  const cable = { busy: false, enableAfter: false };
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+  function markCableStep(step, failed = false) {
+    const idx = CABLE_STEPS.indexOf(step);
+    document.querySelectorAll('#cableSteps li').forEach((li, i) => {
+      li.classList.toggle('done', idx > i || step === 'done');
+      li.classList.toggle('active', i === idx && !failed);
+      li.classList.toggle('failed', i === idx && failed);
+    });
+  }
+
+  function cableMessage(text, isError = false) {
+    const m = $('cableMsg');
+    m.hidden = !text;
+    m.textContent = text || '';
+    m.classList.toggle('error', isError);
+  }
+
+  function openCableModal(open, enableAfter = false) {
+    if (open && cable.busy) return;
+    const m = $('cableModal');
+    if (open) {
+      cable.enableAfter = enableAfter;
+      markCableStep(null);
+      cableMessage('');
+      $('btnCableInstall').disabled = false;
+      $('btnCableInstall').textContent = 'Install';
+      $('btnCableCancel').disabled = false;
+    }
+    if (!open && cable.busy) return;
+    m.classList.toggle('open', open);
+    m.setAttribute('aria-hidden', String(!open));
+  }
+
+  async function cableReady() {
+    // The driver can take a few seconds to show up in Windows and in the browser device list.
+    for (let i = 0; i < 25; i++) {
+      await refreshDevices();
+      if (findCableOut()) return true;
+      await sleep(1000);
+    }
+    return false;
+  }
+
+  async function runCableSetup() {
+    if (!TAURI || cable.busy) return;
+    cable.busy = true;
+    $('btnCableInstall').disabled = true;
+    $('btnCableCancel').disabled = true;
+    $('btnCableInstall').textContent = 'Installing…';
+    cableMessage('');
+    let lastStep = 'download';
+    const stop = await TAURI.event.listen('cable-setup', (e) => {
+      lastStep = e.payload === 'done' ? 'detect' : e.payload;
+      markCableStep(lastStep);
+    });
+    markCableStep('download');
+    try {
+      await invoke('install_virtual_cable');
+      markCableStep('detect');
+      lastStep = 'detect';
+      if (await cableReady()) {
+        markCableStep('done');
+        cable.busy = false;
+        openCableModal(false);
+        toast('Virtual microphone ready');
+        if (cable.enableAfter) {
+          await setSystemMic(true);
+          if (!engine.running) await setPower(true);
+        }
+      } else {
+        markCableStep('detect', true);
+        cableMessage('The driver is installed but Windows has not added the device yet. Restart your PC, then turn on “Use in all apps”.');
+        $('btnCableInstall').textContent = 'Check again';
+        $('btnCableInstall').disabled = false;
+        $('btnCableCancel').disabled = false;
+        $('btnCableInstall').onclick = null;
+      }
+    } catch (err) {
+      markCableStep(lastStep, true);
+      cableMessage(String(err.message || err), true);
+      $('btnCableInstall').textContent = 'Try again';
+      $('btnCableInstall').disabled = false;
+      $('btnCableCancel').disabled = false;
+    } finally {
+      cable.busy = false;
+      stop();
+    }
+  }
+
+  $('btnCableInstall').addEventListener('click', async () => {
+    if ($('btnCableInstall').textContent === 'Check again') {
+      $('btnCableInstall').disabled = true;
+      if (await cableReady()) {
+        openCableModal(false);
+        toast('Virtual microphone ready');
+        if (cable.enableAfter) await setSystemMic(true);
+      } else {
+        $('btnCableInstall').disabled = false;
+      }
+      return;
+    }
+    runCableSetup();
+  });
+  $('btnCableCancel').addEventListener('click', () => openCableModal(false));
 
   // ---------- monitor ("hear myself") ----------
   async function setMonitorOn(on) {
@@ -553,7 +673,12 @@
     hint.classList.remove('warn');
     if (!cable) {
       hint.classList.add('warn');
-      hint.textContent = 'No virtual cable found. Install VB-Audio Virtual Cable to use VoxShift in other apps.';
+      if (TAURI) {
+        hint.innerHTML = '<span>No virtual microphone yet. Needed to use VoxShift in other apps.</span><button type="button">Set up</button>';
+        hint.querySelector('button').addEventListener('click', () => openCableModal(true, true));
+      } else {
+        hint.textContent = 'No virtual cable found. Install VB-Audio Virtual Cable to use VoxShift in other apps.';
+      }
       return;
     }
     if (S.outputId === cable.deviceId) {
@@ -888,7 +1013,7 @@
   // ---------- keyboard ----------
   document.addEventListener('keydown', (e) => {
     const tag = (e.target.tagName || '').toLowerCase();
-    if (e.key === 'Escape') { openDrawer(false); closeSave(); openUpdateModal(false); }
+    if (e.key === 'Escape') { openDrawer(false); closeSave(); openUpdateModal(false); openCableModal(false); }
     const typing = ['input', 'select', 'textarea'].includes(tag) && e.target.type !== 'range';
     if (e.code === 'Space' && !typing && tag !== 'button') {
       e.preventDefault();

@@ -1,6 +1,6 @@
 [package]
 name = "voxshift"
-version = "2.1.0"
+version = "2.2.0"
 description = "Real-time voice changer"
 edition = "2021"
 
@@ -20,6 +20,7 @@ tauri-plugin-single-instance = "2"
 serde = { version = "1", features = ["derive"] }
 ureq = "2"
 sha2 = "0.10"
+zip = { version = "2", default-features = false, features = ["deflate"] }
 
 [target.'cfg(windows)'.dependencies]
 webview2-com = "0.39"
@@ -32,6 +33,9 @@ windows = { version = "0.62", features = [
   "Win32_Devices_FunctionDiscovery",
   "Win32_UI_Shell_PropertiesSystem",
   "Win32_System_Variant",
+  "Win32_UI_Shell",
+  "Win32_System_Threading",
+  "Win32_UI_WindowsAndMessaging",
 ] }
 
 [profile.release]

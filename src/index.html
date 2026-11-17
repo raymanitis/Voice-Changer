@@ -198,9 +198,8 @@
         <section class="group info">
           <h3>How it works</h3>
           <ol>
-            <li>Install the free <a href="https://vb-audio.com/Cable/" target="_blank">VB-Audio Virtual Cable</a> once, then restart VoxShift.</li>
-            <li>Pick your real microphone above.</li>
-            <li>Turn on <b>Use in all apps</b> and press <b>Start</b>.</li>
+            <li>Turn on <b>Use in all apps</b>. The first time, VoxShift sets up its virtual microphone for you (Windows asks for permission once).</li>
+            <li>Pick your real microphone and press <b>Start</b>.</li>
             <li>Apps set to the <b>Default</b> mic now get your changed voice. Apps with a fixed mic: choose <b>CABLE Output</b>.</li>
           </ol>
           <p class="muted small" id="latencyInfo"></p>
@@ -218,6 +217,25 @@
           <button type="submit" class="btn primary">Save</button>
         </div>
       </form>
+    </div>
+
+    <div class="modal" id="cableModal" aria-hidden="true">
+      <div class="modal-card">
+        <h2>Set up virtual microphone</h2>
+        <p class="muted small">To send your changed voice to Discord, games and other apps, VoxShift adds a virtual microphone to Windows. It downloads the free <b>VB-Audio Virtual Cable</b> driver (about 1 MB) from vb-audio.com and installs it. One time only.</p>
+        <ol class="steps" id="cableSteps">
+          <li data-step="download">Download driver</li>
+          <li data-step="verify">Check it is genuine</li>
+          <li data-step="install">Install — Windows will ask for permission</li>
+          <li data-step="detect">Connect VoxShift</li>
+        </ol>
+        <p class="cable-msg small" id="cableMsg" hidden></p>
+        <p class="muted small">VB-CABLE is donationware by <a href="https://vb-audio.com/Cable/">VB-Audio Software</a>.</p>
+        <div class="modal-actions">
+          <button type="button" class="btn ghost" id="btnCableCancel">Not now</button>
+          <button type="button" class="btn primary" id="btnCableInstall">Install</button>
+        </div>
+      </div>
     </div>
 
     <div class="modal" id="updateModal" aria-hidden="true">

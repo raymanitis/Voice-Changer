@@ -8,6 +8,8 @@ use tauri::{AppHandle, Emitter, Manager, RunEvent, WindowEvent, Wry};
 use tauri_plugin_dialog::DialogExt;
 
 #[cfg(windows)]
+mod cable;
+#[cfg(windows)]
 mod winaudio;
 
 struct TrayItems {
@@ -43,6 +45,15 @@ fn restore_default_mic(app: &AppHandle) {
 }
 
 // ---------------- commands ----------------
+
+/// Downloads and installs the VB-Audio Virtual Cable driver (asks Windows for admin rights).
+#[cfg(windows)]
+#[tauri::command]
+async fn install_virtual_cable(app: AppHandle) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || cable::install(&app))
+        .await
+        .map_err(|e| e.to_string())?
+}
 
 #[cfg(windows)]
 #[tauri::command]
@@ -286,6 +297,7 @@ pub fn run() {
 
     #[cfg(windows)]
     let builder = builder.invoke_handler(tauri::generate_handler![
+        install_virtual_cable,
         list_mics,
         system_mic_enable,
         system_mic_disable,

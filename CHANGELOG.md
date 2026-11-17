@@ -1,5 +1,12 @@
 # Changelog
 
+## 2.2.0
+
+### New
+- **One-click virtual microphone**: no more manual downloads. Turning on **Use in all apps** sets everything up: VoxShift downloads the official VB-Audio Virtual Cable driver from vb-audio.com, checks it is genuinely signed by VB-Audio, and installs it. Windows asks for permission once.
+- After setup, VoxShift switches on **Use in all apps** and starts your voice automatically.
+- Audio setup shows a **Set up** button when the virtual microphone is missing.
+
 ## 2.1.0
 
 ### New
