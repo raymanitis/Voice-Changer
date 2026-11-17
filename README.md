@@ -2,6 +2,8 @@
 
 Real-time voice changer for Windows. Native [Tauri](https://tauri.app) app (Rust + WebView2), about 1 MB to download.
 
+![VoxShift main window](docs/screenshots/main.png)
+
 ## Download
 
 **[Download VoxShift-Setup.exe](https://github.com/raymanitis/Voice-Changer/releases/latest/download/VoxShift-Setup.exe)** (Windows 10/11, 64-bit)
@@ -22,6 +24,14 @@ The installer is not code-signed, so Windows SmartScreen may warn you: click **M
 - Noise gate, noise suppression, mic gain, output volume
 - Record the changed voice to a `.webm` file
 - Built-in updates: VoxShift checks GitHub for new versions, shows an **Update** button with the changelog, and installs the new version in one click
+
+## Screenshots
+
+| Voices and live spectrum | Audio setup |
+| --- | --- |
+| ![Helium voice with pitch controls](docs/screenshots/voices.png) | ![Audio setup panel with devices, Hear myself and levels](docs/screenshots/audio-setup.png) |
+| **One-click virtual microphone** | **What's new and updates** |
+| ![Virtual microphone setup window](docs/screenshots/virtual-mic-setup.png) | ![Changelog window](docs/screenshots/whats-new.png) |
 
 ## Use it in Discord, games, OBS and browsers
 

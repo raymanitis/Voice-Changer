@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.2.2
+
+### Fixed
+- The **What's new** window showed an empty list instead of the release notes.
+
 ## 2.2.1
 
 ### Fixed

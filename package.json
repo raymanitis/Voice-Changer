@@ -1,7 +1,7 @@
 {
   "name": "voxshift",
   "productName": "VoxShift",
-  "version": "2.2.1",
+  "version": "2.2.2",
   "description": "Real-time voice changer with pitch control and effect presets",
   "private": true,
   "author": "VoxShift",
