@@ -1,0 +1,47 @@
+{
+  "name": "voxshift",
+  "productName": "VoxShift",
+  "version": "1.0.0",
+  "description": "Real-time voice changer with pitch control and effect presets",
+  "main": "main.js",
+  "author": "VoxShift",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/raymanitis/Voice-Changer.git"
+  },
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --win nsis"
+  },
+  "devDependencies": {
+    "electron": "^33.2.0",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "com.voxshift.app",
+    "productName": "VoxShift",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "src/**/*",
+      "build/icon.png"
+    ],
+    "win": {
+      "target": "nsis",
+      "icon": "build/icon.png"
+    },
+    "nsis": {
+      "artifactName": "VoxShift-Setup.exe",
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "VoxShift"
+    }
+  }
+}

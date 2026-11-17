@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self'; script-src 'self' blob:; worker-src 'self' blob:; style-src 'self' 'unsafe-inline'; img-src 'self' data:; media-src 'self' blob: mediastream:" />
+  <title>VoxShift</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="app">
+    <header class="titlebar">
+      <div class="brand">
+        <div class="logo">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round">
+            <path d="M4 10v4M8 6v12M12 9v6M16 4v16M20 10v4" />
+          </svg>
+        </div>
+        <span>VoxShift</span>
+        <span class="status-pill" id="statusPill"><i></i><b>Off</b></span>
+      </div>
+      <div class="title-actions">
+        <button id="btnSettings" class="icon-btn" title="Audio devices &amp; levels">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0" />
+            <circle cx="16" cy="6" r="2" /><circle cx="10" cy="12" r="2" /><circle cx="18" cy="18" r="2" />
+          </svg>
+          <span>Audio setup</span>
+        </button>
+      </div>
+    </header>
+
+    <main class="layout">
+      <aside class="library">
+        <label class="search">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></svg>
+          <input id="search" placeholder="Search voices" autocomplete="off" spellcheck="false" />
+        </label>
+        <div class="lib-head"><h2>Voices</h2><span class="count" id="presetCount"></span></div>
+        <div class="preset-grid" id="builtinGrid"></div>
+        <div class="lib-head mine"><h2>My voices</h2><span class="count" id="customCount"></span></div>
+        <div class="preset-grid" id="customGrid"></div>
+        <p class="empty" id="customEmpty">Tweak any voice, then hit <b>Save voice</b> to keep it here.</p>
+      </aside>
+
+      <section class="stage">
+        <div class="hero card">
+          <div class="hero-top">
+            <div class="now">
+              <div class="now-icon" id="nowIcon"></div>
+              <div class="now-text">
+                <div class="now-label">Current voice <span class="chip" id="modChip" hidden>Modified</span></div>
+                <h1 id="nowName">Normal</h1>
+                <p id="nowDesc"></p>
+              </div>
+            </div>
+            <button class="power" id="btnPower" title="Start / stop (Space)">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
+                <path d="M12 3v8" /><path d="M6.3 7.2a8 8 0 1 0 11.4 0" />
+              </svg>
+              <span id="powerLabel">Start</span>
+            </button>
+          </div>
+          <canvas id="viz"></canvas>
+          <div class="hero-bottom">
+            <div class="meter"><span>IN</span><div class="bar"><i id="meterIn"></i></div></div>
+            <div class="meter"><span>OUT</span><div class="bar"><i id="meterOut"></i></div></div>
+            <button class="route" id="routeInfo" title="Change devices"></button>
+          </div>
+        </div>
+
+        <div class="controls card">
+          <div class="controls-head">
+            <div class="tabs" id="tabs">
+              <button data-tab="voice" class="active">Voice</button>
+              <button data-tab="fx">Effects</button>
+              <button data-tab="tone">Tone &amp; Space</button>
+            </div>
+            <div class="actions">
+              <button id="btnRecord" class="btn ghost" title="Record processed voice to a file"><i class="rec-dot"></i><span>Record</span></button>
+              <button id="btnReset" class="btn ghost" title="Reset sliders to this voice's defaults">Reset</button>
+              <button id="btnSave" class="btn primary">Save voice</button>
+            </div>
+          </div>
+          <div class="sliders" id="sliders"></div>
+        </div>
+      </section>
+    </main>
+
+    <div class="backdrop" id="backdrop"></div>
+
+    <aside class="drawer" id="drawer" aria-hidden="true">
+      <div class="drawer-head">
+        <h2>Audio setup</h2>
+        <button class="icon-btn" id="btnCloseDrawer" title="Close">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18" /></svg>
+        </button>
+      </div>
+
+      <div class="drawer-body">
+        <section class="group">
+          <h3>Devices</h3>
+          <label class="field">
+            <span>Microphone</span>
+            <select id="selInput"></select>
+          </label>
+          <label class="field">
+            <span>Send voice to</span>
+            <select id="selOutput"></select>
+          </label>
+          <div class="cable-hint" id="cableHint"></div>
+        </section>
+
+        <section class="group">
+          <div class="row-between">
+            <h3>Hear myself</h3>
+            <label class="switch"><input type="checkbox" id="tglMonitor" /><i></i></label>
+          </div>
+          <p class="muted small">Plays your changed voice in your headphones while it is sent to the device above.</p>
+          <label class="field">
+            <span>Monitor device</span>
+            <select id="selMonitor"></select>
+          </label>
+          <div id="monitorVolSlot"></div>
+        </section>
+
+        <section class="group">
+          <h3>Levels</h3>
+          <div id="levelSlots"></div>
+          <div class="row-between">
+            <span class="field-label">Noise suppression</span>
+            <label class="switch"><input type="checkbox" id="tglSuppress" /><i></i></label>
+          </div>
+        </section>
+
+        <section class="group info">
+          <h3>Use in Discord, games &amp; OBS</h3>
+          <ol>
+            <li>Install a free virtual audio cable, e.g. <a href="https://vb-audio.com/Cable/" target="_blank">VB-Audio Cable</a>.</li>
+            <li>Set <b>Send voice to</b> to <b>CABLE Input</b>.</li>
+            <li>In Discord / your game, pick <b>CABLE Output</b> as the microphone.</li>
+            <li>Turn on <b>Hear myself</b> to monitor the effect.</li>
+          </ol>
+          <p class="muted small" id="latencyInfo"></p>
+        </section>
+      </div>
+    </aside>
+
+    <div class="modal" id="saveModal" aria-hidden="true">
+      <form class="modal-card" id="saveForm">
+        <h2>Save voice</h2>
+        <p class="muted small">Stores the current slider settings as your own preset.</p>
+        <input id="saveName" maxlength="24" placeholder="Voice name" autocomplete="off" />
+        <div class="modal-actions">
+          <button type="button" class="btn ghost" id="btnCancelSave">Cancel</button>
+          <button type="submit" class="btn primary">Save</button>
+        </div>
+      </form>
+    </div>
+
+    <div class="toast" id="toast"></div>
+  </div>
+
+  <script src="presets.js"></script>
+  <script src="engine.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
