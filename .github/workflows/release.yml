@@ -36,6 +36,15 @@ jobs:
           $exe = Get-ChildItem src-tauri/target/release/bundle/nsis/*-setup.exe | Select-Object -First 1
           Copy-Item $exe.FullName VoxShift-Setup.exe
 
+      - name: Release notes from CHANGELOG.md
+        shell: pwsh
+        run: |
+          $ver = '${{ github.ref_name }}'.TrimStart('v')
+          $md = Get-Content CHANGELOG.md -Raw
+          $m = [regex]::Match($md, "(?ms)^## \[?$([regex]::Escape($ver))\]?[^\r\n]*\r?\n(.*?)(?=^## |\z)")
+          $notes = if ($m.Success) { $m.Groups[1].Value.Trim() } else { "See CHANGELOG.md for details." }
+          Set-Content -Path release-notes.md -Value $notes -Encoding utf8NoBOM
+
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
@@ -48,4 +57,4 @@ jobs:
         with:
           name: VoxShift ${{ github.ref_name }}
           files: VoxShift-Setup.exe
-          generate_release_notes: true
+          body_path: release-notes.md

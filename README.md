@@ -21,6 +21,7 @@ The installer is not code-signed, so Windows SmartScreen may warn you: click **M
 - Optional **Start with Windows** (starts hidden in the tray)
 - Noise gate, noise suppression, mic gain, output volume
 - Record the changed voice to a `.webm` file
+- Built-in updates: VoxShift checks GitHub for new versions, shows an **Update** button with the changelog, and installs the new version in one click
 
 ## Use it in Discord, games, OBS and browsers
 

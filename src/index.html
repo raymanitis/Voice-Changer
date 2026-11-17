@@ -19,6 +19,10 @@
         <span class="status-pill" id="statusPill"><i></i><b>Off</b></span>
       </div>
       <div class="title-actions">
+        <button id="btnUpdate" class="update-pill" hidden title="A new version of VoxShift is available">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11M7 10l5 5 5-5M5 20h14" /></svg>
+          <span id="btnUpdateLabel">Update available</span>
+        </button>
         <button id="btnSettings" class="icon-btn" title="Audio devices &amp; levels">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
             <path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0" />
@@ -175,6 +179,22 @@
           </div>
         </section>
 
+        <section class="group">
+          <h3>About</h3>
+          <div class="row-between">
+            <span class="field-label">VoxShift <span id="appVersion" class="muted"></span></span>
+            <span class="muted small" id="updateStatus"></span>
+          </div>
+          <div class="btn-row">
+            <button class="btn ghost" id="btnCheckUpdates" type="button">Check for updates</button>
+            <button class="btn ghost" id="btnChangelog" type="button">What's new</button>
+          </div>
+          <div class="row-between">
+            <span class="field-label">Check for updates automatically</span>
+            <label class="switch"><input type="checkbox" id="tglAutoUpdate" /><i></i></label>
+          </div>
+        </section>
+
         <section class="group info">
           <h3>How it works</h3>
           <ol>
@@ -198,6 +218,31 @@
           <button type="submit" class="btn primary">Save</button>
         </div>
       </form>
+    </div>
+
+    <div class="modal" id="updateModal" aria-hidden="true">
+      <div class="modal-card wide">
+        <div class="modal-head">
+          <div>
+            <h2>What's new</h2>
+            <p class="muted small" id="updHeadline">Checking for updates…</p>
+          </div>
+          <button class="icon-btn" id="btnCloseUpdate" title="Close" type="button">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18" /></svg>
+          </button>
+        </div>
+        <div class="upd-panel" id="updPanel" hidden>
+          <div class="upd-row">
+            <div>
+              <div class="upd-title" id="updTitle"></div>
+              <div class="muted small">Downloads, installs and restarts VoxShift. Takes a few seconds.</div>
+            </div>
+            <button class="btn primary" id="btnInstallUpdate" type="button">Update now</button>
+          </div>
+          <div class="progress" id="updProgress" hidden><i id="updProgressBar"></i></div>
+        </div>
+        <div class="changelog" id="changelog"></div>
+      </div>
     </div>
 
     <div class="toast" id="toast"></div>

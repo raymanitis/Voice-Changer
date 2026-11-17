@@ -115,6 +115,79 @@ async fn save_recording(app: AppHandle, request: tauri::ipc::Request<'_>) -> Res
     Ok(Some(path.display().to_string()))
 }
 
+// ---------------- updates ----------------
+
+/// Only installers attached to this project's GitHub releases may be downloaded.
+const RELEASE_PREFIX: &str = "https://github.com/raymanitis/Voice-Changer/releases/download/";
+
+#[derive(Clone, serde::Serialize)]
+struct UpdateProgress {
+    downloaded: u64,
+    total: u64,
+}
+
+fn download_update(app: &AppHandle, url: &str, sha256: Option<&str>) -> Result<std::path::PathBuf, String> {
+    use sha2::{Digest, Sha256};
+    use std::io::{Read, Write};
+
+    let resp = ureq::get(url)
+        .set("User-Agent", "VoxShift-Updater")
+        .call()
+        .map_err(|e| format!("Download failed: {e}"))?;
+    let total: u64 = resp.header("Content-Length").and_then(|v| v.parse().ok()).unwrap_or(0);
+    let mut reader = resp.into_reader();
+    let path = std::env::temp_dir().join("VoxShift-Setup-update.exe");
+    let mut file = std::fs::File::create(&path).map_err(|e| e.to_string())?;
+    let mut hasher = Sha256::new();
+    let mut buf = vec![0u8; 64 * 1024];
+    let (mut done, mut last_emit) = (0u64, 0u64);
+    loop {
+        let n = reader.read(&mut buf).map_err(|e| format!("Download failed: {e}"))?;
+        if n == 0 {
+            break;
+        }
+        file.write_all(&buf[..n]).map_err(|e| e.to_string())?;
+        hasher.update(&buf[..n]);
+        done += n as u64;
+        if done - last_emit >= 128 * 1024 {
+            last_emit = done;
+            let _ = app.emit("update-progress", UpdateProgress { downloaded: done, total });
+        }
+    }
+    file.flush().map_err(|e| e.to_string())?;
+    drop(file);
+    let _ = app.emit("update-progress", UpdateProgress { downloaded: done, total: done });
+
+    if let Some(expected) = sha256 {
+        let expected = expected.trim().trim_start_matches("sha256:");
+        let got = format!("{:x}", hasher.finalize());
+        if !got.eq_ignore_ascii_case(expected) {
+            let _ = std::fs::remove_file(&path);
+            return Err("The downloaded update failed its integrity check.".into());
+        }
+    }
+    Ok(path)
+}
+
+/// Downloads the release installer, runs it in passive update mode (it relaunches VoxShift
+/// when done) and quits so the installer can replace the files.
+#[tauri::command]
+async fn install_update(app: AppHandle, url: String, sha256: Option<String>) -> Result<(), String> {
+    if !url.starts_with(RELEASE_PREFIX) || !url.ends_with(".exe") {
+        return Err("Refusing to download an update from an unexpected address.".into());
+    }
+    let handle = app.clone();
+    let path = tauri::async_runtime::spawn_blocking(move || download_update(&handle, &url, sha256.as_deref()))
+        .await
+        .map_err(|e| e.to_string())??;
+    std::process::Command::new(&path)
+        .args(["/P", "/R", "/UPDATE"])
+        .spawn()
+        .map_err(|e| format!("Could not start the installer: {e}"))?;
+    app.exit(0);
+    Ok(())
+}
+
 // ---------------- setup helpers ----------------
 
 /// Grants microphone access to our own page without WebView2's permission prompt.
@@ -219,14 +292,16 @@ pub fn run() {
         set_tray_state,
         set_close_to_tray,
         quit_app,
-        save_recording
+        save_recording,
+        install_update
     ]);
     #[cfg(not(windows))]
     let builder = builder.invoke_handler(tauri::generate_handler![
         set_tray_state,
         set_close_to_tray,
         quit_app,
-        save_recording
+        save_recording,
+        install_update
     ]);
 
     builder

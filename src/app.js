@@ -40,6 +40,7 @@
     prevDefaultMic: null,    // Windows endpoint id of the user's real default mic
     outputBeforeSystem: null,
     closeToTray: true,
+    autoUpdate: true,
   };
   const S = { ...defaults, ...store.get('settings', {}) };
   let customPresets = store.get('custom', []);
@@ -686,6 +687,185 @@
     TAURI.event.listen('tray-monitor', () => setMonitorOn(!S.monitorOn));
   }
 
+  // ---------- updates & changelog ----------
+  const RELEASES_API = 'https://api.github.com/repos/raymanitis/Voice-Changer/releases?per_page=20';
+  const upd = { version: '', releases: [], latest: null, checking: null, installing: false };
+
+  const parseVer = (v) => String(v).replace(/^v/, '').split('.').map((n) => parseInt(n, 10) || 0);
+  function newerThan(a, b) {
+    const x = parseVer(a), y = parseVer(b);
+    for (let i = 0; i < 3; i++) if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) > (y[i] || 0);
+    return false;
+  }
+
+  function escapeHtml(s) {
+    return s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  }
+
+  // Small markdown subset for release notes: headings, bullets, bold, code, links.
+  function renderNotes(md) {
+    const inline = (t) => escapeHtml(t)
+      .replace(/`([^`]+)`/g, '<code>$1</code>')
+      .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+      .replace(/\[([^\]]+)\]\((https:\/\/[^)\s]+)\)/g, '<a href="$2">$1</a>');
+    let html = '', inList = false;
+    for (const raw of String(md || '').split(/\r?\n/)) {
+      const line = raw.trim();
+      const li = line.match(/^[-*]\s+(.*)/);
+      if (li) {
+        if (!inList) { html += '<ul>'; inList = true; }
+        html += `<li>${inline(li[1])}</li>`;
+        continue;
+      }
+      if (inList) { html += '</ul>'; inList = false; }
+      if (!line) continue;
+      const h = line.match(/^#{1,6}\s+(.*)/);
+      html += h ? `<h4>${inline(h[1])}</h4>` : `<p>${inline(line)}</p>`;
+    }
+    if (inList) html += '</ul>';
+    return html || '<p class="muted">No notes for this release.</p>';
+  }
+
+  // Release notes come from CHANGELOG.md on main (falls back to the GitHub release text).
+  const CHANGELOG_URL = 'https://raw.githubusercontent.com/raymanitis/Voice-Changer/main/CHANGELOG.md';
+  async function fetchChangelog() {
+    const map = {};
+    try {
+      const res = await fetch(CHANGELOG_URL, { cache: 'no-store' });
+      if (!res.ok) return map;
+      const text = await res.text();
+      for (const part of text.split(/^## /m).slice(1)) {
+        const nl = part.indexOf('\n');
+        const ver = part.slice(0, nl).trim().replace(/^\[?v?([\d.]+)\]?.*$/, '$1');
+        map[ver] = part.slice(nl + 1).trim();
+      }
+    } catch {}
+    return map;
+  }
+
+  async function fetchReleases() {
+    const [res, notesByVersion] = await Promise.all([
+      fetch(RELEASES_API, { headers: { Accept: 'application/vnd.github+json' } }),
+      fetchChangelog(),
+    ]);
+    if (!res.ok) throw new Error(`GitHub returned ${res.status}`);
+    const list = await res.json();
+    return list
+      .filter((r) => !r.draft && !r.prerelease)
+      .map((r) => {
+        const asset = (r.assets || []).find((a) => /^VoxShift-Setup\.exe$/i.test(a.name));
+        const version = r.tag_name.replace(/^v/, '');
+        return {
+          version,
+          date: r.published_at,
+          notes: notesByVersion[version] || r.body || '',
+          url: asset ? asset.browser_download_url : null,
+          sha256: asset && asset.digest ? asset.digest : null,
+        };
+      })
+      .sort((a, b) => (newerThan(a.version, b.version) ? -1 : 1));
+  }
+
+  function checkForUpdates(manual = false) {
+    if (upd.checking) return upd.checking;
+    $('updateStatus').textContent = 'Checking…';
+    upd.checking = (async () => {
+      try {
+        upd.releases = await fetchReleases();
+        const top = upd.releases.find((r) => r.url);
+        upd.latest = top && upd.version && newerThan(top.version, upd.version) ? top : null;
+        $('updateStatus').textContent = upd.latest ? `Version ${upd.latest.version} available` : 'Up to date';
+        $('btnUpdate').hidden = !upd.latest;
+        if (upd.latest) $('btnUpdateLabel').textContent = `Update to ${upd.latest.version}`;
+        if (manual && !upd.latest) toast('VoxShift is up to date');
+      } catch (err) {
+        $('updateStatus').textContent = 'Could not check';
+        if (manual) toast('Could not check for updates: ' + (err.message || err), true);
+      } finally {
+        upd.checking = null;
+        renderUpdateModal();
+      }
+    })();
+    return upd.checking;
+  }
+
+  function renderUpdateModal() {
+    const head = $('updHeadline');
+    if (upd.latest) {
+      head.textContent = `You have ${upd.version}. Version ${upd.latest.version} is ready to install.`;
+    } else if (upd.releases.length) {
+      head.textContent = `You're on the latest version${upd.version ? ` (${upd.version})` : ''}.`;
+    }
+    $('updPanel').hidden = !upd.latest || !TAURI;
+    if (upd.latest) $('updTitle').textContent = `VoxShift ${upd.latest.version}`;
+    const host = $('changelog');
+    host.replaceChildren(...upd.releases.map((r) => {
+      const el = document.createElement('article');
+      el.className = 'release';
+      const tag = r.version === upd.version ? '<span class="tag">Installed</span>'
+        : upd.latest && r.version === upd.latest.version ? '<span class="tag">New</span>' : '';
+      const date = r.date ? new Date(r.date).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) : '';
+      el.innerHTML = `<div class="release-head"><b>Version ${escapeHtml(r.version)}</b>${tag}<time>${date}</time></div><div class="notes">${renderNotes(r.notes)}</div>`;
+      return el;
+    }));
+  }
+
+  function openUpdateModal(open) {
+    const m = $('updateModal');
+    m.classList.toggle('open', open);
+    m.setAttribute('aria-hidden', String(!open));
+    if (open) {
+      if (!upd.releases.length) checkForUpdates();
+      renderUpdateModal();
+    }
+  }
+
+  async function installUpdate() {
+    if (!upd.latest || upd.installing || !TAURI) return;
+    upd.installing = true;
+    const btn = $('btnInstallUpdate');
+    btn.disabled = true;
+    btn.textContent = 'Downloading…';
+    $('updProgress').hidden = false;
+    const stop = await TAURI.event.listen('update-progress', (e) => {
+      const { downloaded, total } = e.payload;
+      $('updProgressBar').style.width = total ? `${Math.min(100, (downloaded / total) * 100).toFixed(1)}%` : '50%';
+      if (total && downloaded >= total) btn.textContent = 'Installing…';
+    });
+    try {
+      await invoke('install_update', { url: upd.latest.url, sha256: upd.latest.sha256 });
+    } catch (err) {
+      toast('Update failed: ' + (err.message || err), true);
+      btn.disabled = false;
+      btn.textContent = 'Try again';
+      $('updProgress').hidden = true;
+      upd.installing = false;
+    } finally {
+      stop();
+    }
+  }
+
+  async function initUpdates() {
+    try { upd.version = TAURI ? await TAURI.app.getVersion() : ''; } catch {}
+    $('appVersion').textContent = upd.version ? `v${upd.version}` : '(browser preview)';
+    $('tglAutoUpdate').checked = S.autoUpdate;
+    $('tglAutoUpdate').addEventListener('change', (e) => {
+      S.autoUpdate = e.target.checked;
+      save();
+      if (S.autoUpdate) checkForUpdates();
+    });
+    $('btnUpdate').addEventListener('click', () => openUpdateModal(true));
+    $('btnChangelog').addEventListener('click', () => openUpdateModal(true));
+    $('btnCheckUpdates').addEventListener('click', () => checkForUpdates(true));
+    $('btnCloseUpdate').addEventListener('click', () => openUpdateModal(false));
+    $('updateModal').addEventListener('mousedown', (e) => { if (e.target === $('updateModal')) openUpdateModal(false); });
+    $('btnInstallUpdate').addEventListener('click', installUpdate);
+    if (S.autoUpdate && TAURI) {
+      setTimeout(() => checkForUpdates(), 4000);
+      setInterval(() => { if (S.autoUpdate) checkForUpdates(); }, 6 * 60 * 60 * 1000);
+    }
+  }
+
   // ---------- drawer ----------
   function openDrawer(open) {
     $('drawer').classList.toggle('open', open);
@@ -708,7 +888,7 @@
   // ---------- keyboard ----------
   document.addEventListener('keydown', (e) => {
     const tag = (e.target.tagName || '').toLowerCase();
-    if (e.key === 'Escape') { openDrawer(false); closeSave(); }
+    if (e.key === 'Escape') { openDrawer(false); closeSave(); openUpdateModal(false); }
     const typing = ['input', 'select', 'textarea'].includes(tag) && e.target.type !== 'range';
     if (e.code === 'Space' && !typing && tag !== 'button') {
       e.preventDefault();
@@ -812,6 +992,7 @@
     resizeCanvas();
     requestAnimationFrame(draw);
     await initDesktop();
+    initUpdates();
     // A previous session ended without undoing the Windows mic swap (crash / power loss): undo it now.
     await disableSystemMic();
     await unlockLabels();
