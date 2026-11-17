@@ -4,6 +4,10 @@
   const engine = new window.VoxEngine();
   const $ = (id) => document.getElementById(id);
 
+  // Tauri desktop bridge (absent when the UI is opened in a plain browser).
+  const TAURI = window.__TAURI__ || null;
+  const invoke = (cmd, args) => (TAURI ? TAURI.core.invoke(cmd, args) : Promise.reject(new Error('Desktop app only')));
+
   // ---------- persistence ----------
   const store = {
     get(key, fallback) {
@@ -31,6 +35,11 @@
     noiseSuppression: false,
     wasOn: false,
     tab: 'voice',
+    systemMic: false,        // "Use in all apps": swap the Windows default mic while live
+    systemMicActive: false,  // the swap is currently applied (survives crashes so we can undo it)
+    prevDefaultMic: null,    // Windows endpoint id of the user's real default mic
+    outputBeforeSystem: null,
+    closeToTray: true,
   };
   const S = { ...defaults, ...store.get('settings', {}) };
   let customPresets = store.get('custom', []);
@@ -177,6 +186,7 @@
     renderNow();
     renderSliders();
     markActive();
+    syncTray();
   }
 
   function deletePreset(id) {
@@ -321,25 +331,29 @@
     try {
       if (on) {
         $('powerLabel').textContent = 'Starting…';
+        if (S.systemMic) await prepareSystemMic();
         engine.params = params;
         engine.levels = { inputGain: S.inputGain, volume: S.volume, gate: S.gate };
         await engine.start({ inputId: S.inputId, outputId: S.outputId, noiseSuppression: S.noiseSuppression });
         await engine.setMonitor(S.monitorOn, S.monitorId, S.monitorVol);
+        if (S.systemMic) await enableSystemMic();
         await refreshDevices();
       } else {
         await engine.stop();
+        await disableSystemMic();
       }
       S.wasOn = on;
       save();
     } catch (err) {
       console.error(err);
       await engine.stop();
+      await disableSystemMic();
       S.wasOn = false;
       save();
       const msg = err && err.name === 'NotAllowedError' ? 'Microphone access was blocked.'
         : err && err.name === 'NotFoundError' ? 'No microphone found. Plug one in and try again.'
-        : err && err.name === 'OverconstrainedError' ? 'Selected microphone is unavailable. Pick another in Audio setup.'
-        : 'Could not start audio: ' + (err && err.message ? err.message : err);
+        : err && err.name === 'OverconstrainedError' ? 'Selected microphone is unavailable. Pick another one.'
+        : (err && err.message) || String(err);
       toast(msg, true);
     } finally {
       starting = false;
@@ -350,18 +364,137 @@
       $('statusPill').querySelector('b').textContent = live ? 'Live' : 'Off';
       $('btnRecord').disabled = !live;
       updateLatency();
+      syncTray();
     }
   }
   $('btnPower').addEventListener('click', () => setPower(!engine.running));
 
+  // ---------- "use in all apps" (Windows default mic swap) ----------
+  const VIRTUAL_RE = /cable|vb-audio|voicemeeter|virtual/i;
+
+  const findCableOut = () =>
+    devices.outputs.find((d) => /cable input/i.test(d.label)) || devices.outputs.find((d) => VIRTUAL_RE.test(d.label));
+
+  // Before going live: route our output into the cable and pin a real mic as our input,
+  // because "System default" will point at the cable once we swap the Windows default.
+  async function prepareSystemMic() {
+    if (!TAURI) throw new Error('“Use in all apps” works in the desktop app only.');
+    await refreshDevices();
+    const cable = findCableOut();
+    if (!cable) throw new Error('Install VB-Audio Virtual Cable first (Audio setup → How it works), then restart VoxShift.');
+    if (S.outputId !== cable.deviceId) {
+      S.outputBeforeSystem = S.outputId;
+      S.outputId = cable.deviceId;
+    }
+    const current = devices.inputs.find((d) => d.deviceId === S.inputId);
+    if (!current || VIRTUAL_RE.test(current.label)) {
+      let pick = null;
+      try {
+        const winMics = await invoke('list_mics');
+        const realDefault = winMics.find((m) => m.is_default && !VIRTUAL_RE.test(m.name)) ||
+          (S.prevDefaultMic && winMics.find((m) => m.id === S.prevDefaultMic));
+        if (realDefault) pick = devices.inputs.find((d) => d.label === realDefault.name);
+      } catch {}
+      pick = pick || devices.inputs.find((d) => !VIRTUAL_RE.test(d.label));
+      if (!pick) throw new Error('No real microphone found. Plug one in and try again.');
+      S.inputId = pick.deviceId;
+    }
+    save();
+    renderDeviceSelects();
+  }
+
+  async function enableSystemMic() {
+    const mics = await invoke('list_mics');
+    const cable = mics.find((m) => /cable output/i.test(m.name)) || mics.find((m) => VIRTUAL_RE.test(m.name));
+    if (!cable) throw new Error('Virtual cable microphone (CABLE Output) not found.');
+    const prev = await invoke('system_mic_enable', { cableId: cable.id });
+    if (prev) S.prevDefaultMic = prev;
+    S.systemMicActive = true;
+    save();
+  }
+
+  async function disableSystemMic() {
+    if (!TAURI || !S.systemMicActive) return;
+    try {
+      await invoke('system_mic_disable', { fallback: S.prevDefaultMic });
+    } catch (err) {
+      console.warn(err);
+    }
+    S.systemMicActive = false;
+    save();
+  }
+
+  async function setSystemMic(on) {
+    if (on && !TAURI) {
+      toast('“Use in all apps” works in the desktop app only.', true);
+      renderToggles();
+      return;
+    }
+    S.systemMic = on;
+    if (!on && S.outputBeforeSystem !== null) {
+      S.outputId = S.outputBeforeSystem;
+      S.outputBeforeSystem = null;
+    }
+    save();
+    renderToggles();
+    if (engine.running) {
+      if (on) await setPower(true);
+      else {
+        await disableSystemMic();
+        await engine.setOutput(S.outputId);
+      }
+    }
+    renderDeviceSelects();
+    if (on && engine.running) toast('Every app using the Default mic now hears your changed voice');
+    if (!on) toast('Windows microphone restored');
+  }
+  $('qSystem').addEventListener('click', () => setSystemMic(!S.systemMic));
+  $('tglSystem').addEventListener('change', (e) => setSystemMic(e.target.checked));
+
+  // ---------- monitor ("hear myself") ----------
+  async function setMonitorOn(on) {
+    S.monitorOn = on;
+    save();
+    await engine.setMonitor(S.monitorOn, S.monitorId, S.monitorVol);
+    renderToggles();
+    syncTray();
+  }
+  $('qMonitor').addEventListener('click', () => setMonitorOn(!S.monitorOn));
+  $('tglMonitor').addEventListener('change', (e) => setMonitorOn(e.target.checked));
+
+  function renderToggles() {
+    $('qMonitor').classList.toggle('on', S.monitorOn);
+    $('tglMonitor').checked = S.monitorOn;
+    $('qSystem').classList.toggle('on', S.systemMic);
+    $('tglSystem').checked = S.systemMic;
+    $('qSystem').classList.toggle('warn', S.systemMic && !findCableOut() && devices.outputs.length > 0);
+  }
+
+  // ---------- tray ----------
+  function syncTray() {
+    if (!TAURI) return;
+    invoke('set_tray_state', { live: engine.running, monitor: S.monitorOn, voice: current.name }).catch(() => {});
+  }
+
   // ---------- recording ----------
+  if (TAURI) {
+    engine.onRecorded = async (blob) => {
+      try {
+        const bytes = new Uint8Array(await blob.arrayBuffer());
+        const path = await invoke('save_recording', bytes);
+        toast(path ? `Saved ${path.split(/[\\/]/).pop()}` : 'Recording discarded');
+      } catch (err) {
+        toast('Could not save recording: ' + (err.message || err), true);
+      }
+    };
+  }
   $('btnRecord').addEventListener('click', () => {
     const btn = $('btnRecord');
     if (engine.recorder) {
       engine.stopRecording();
       btn.classList.remove('recording');
       btn.querySelector('span').textContent = 'Record';
-      toast('Recording saved');
+      if (!TAURI) toast('Recording saved');
     } else if (engine.startRecording()) {
       btn.classList.add('recording');
       btn.querySelector('span').textContent = 'Stop';
@@ -369,7 +502,6 @@
   });
 
   // ---------- devices ----------
-  const VIRTUAL_RE = /cable|vb-audio|voicemeeter|virtual/i;
   let devices = { inputs: [], outputs: [] };
 
   async function unlockLabels() {
@@ -394,31 +526,37 @@
     return sel.value;
   }
 
+  function renderDeviceSelects() {
+    const realInputs = S.systemMic ? devices.inputs.filter((d) => !VIRTUAL_RE.test(d.label)) : devices.inputs;
+    fillSelect($('selInput'), realInputs, S.inputId, [['', 'System default']]);
+    fillSelect($('quickInput'), realInputs, S.inputId, [['', 'Default microphone']]);
+    fillSelect($('selOutput'), devices.outputs, S.outputId, [['', 'System default (speakers)'], ['off', 'Nowhere (monitor only)']]);
+    fillSelect($('selMonitor'), devices.outputs, S.monitorId, [['', 'System default']]);
+    renderCableHint();
+    renderToggles();
+    renderRoute();
+  }
+
   async function refreshDevices() {
     let list = [];
     try { list = await navigator.mediaDevices.enumerateDevices(); } catch {}
     const skip = (d) => d.deviceId === 'default' || d.deviceId === 'communications';
     devices.inputs = list.filter((d) => d.kind === 'audioinput' && !skip(d));
     devices.outputs = list.filter((d) => d.kind === 'audiooutput' && !skip(d));
-
-    fillSelect($('selInput'), devices.inputs, S.inputId, [['', 'System default']]);
-    fillSelect($('selOutput'), devices.outputs, S.outputId, [['', 'System default (speakers)'], ['off', 'Nowhere (monitor only)']]);
-    fillSelect($('selMonitor'), devices.outputs, S.monitorId, [['', 'System default']]);
-    renderCableHint();
-    renderRoute();
+    renderDeviceSelects();
   }
 
   function renderCableHint() {
     const hint = $('cableHint');
-    const cable = devices.outputs.find((d) => /cable input/i.test(d.label)) || devices.outputs.find((d) => VIRTUAL_RE.test(d.label));
+    const cable = findCableOut();
     hint.classList.remove('warn');
     if (!cable) {
       hint.classList.add('warn');
-      hint.textContent = 'No virtual cable found. Install one to use VoxShift as a mic in other apps.';
+      hint.textContent = 'No virtual cable found. Install VB-Audio Virtual Cable to use VoxShift in other apps.';
       return;
     }
     if (S.outputId === cable.deviceId) {
-      hint.textContent = `Sending to ${cable.label}. Apps can now use the matching cable output as a mic.`;
+      hint.textContent = `Sending to ${cable.label}.`;
       return;
     }
     hint.innerHTML = '<span></span><button type="button">Use it</button>';
@@ -438,8 +576,7 @@
   function renderRoute() {
     const mic = labelOf(devices.inputs, S.inputId, 'Default mic');
     const out = S.outputId === 'off' ? 'No output' : labelOf(devices.outputs, S.outputId, 'Default speakers');
-    const mon = S.monitorOn ? ' · monitoring' : '';
-    $('routeInfo').textContent = `${short(mic)}  →  ${short(out)}${mon}`;
+    $('statusPill').title = `${short(mic)} → ${short(out)}${S.monitorOn ? ' · hearing myself' : ''}`;
   }
   const short = (s) => s.replace(/\s*\([0-9a-f]{4}:[0-9a-f]{4}\)\s*$/i, '');
 
@@ -451,23 +588,19 @@
     renderRoute();
   }
 
-  $('selInput').addEventListener('change', async () => {
-    S.inputId = $('selInput').value;
+  async function onInputChange(value) {
+    S.inputId = value;
     save();
-    renderRoute();
+    renderDeviceSelects();
     if (engine.running) await setPower(true);
-  });
+  }
+  $('selInput').addEventListener('change', (e) => onInputChange(e.target.value));
+  $('quickInput').addEventListener('change', (e) => onInputChange(e.target.value));
   $('selOutput').addEventListener('change', onOutputChange);
   $('selMonitor').addEventListener('change', async () => {
     S.monitorId = $('selMonitor').value;
     save();
     await engine.setMonitor(S.monitorOn, S.monitorId, S.monitorVol);
-  });
-  $('tglMonitor').addEventListener('change', async (e) => {
-    S.monitorOn = e.target.checked;
-    save();
-    await engine.setMonitor(S.monitorOn, S.monitorId, S.monitorVol);
-    renderRoute();
   });
   $('tglSuppress').addEventListener('change', async (e) => {
     S.noiseSuppression = e.target.checked;
@@ -507,6 +640,52 @@
     $('monitorVolSlot').replaceChildren(mon.el);
   }
 
+  // ---------- desktop integration ----------
+  async function initDesktop() {
+    if (!TAURI) {
+      $('tglTray').disabled = true;
+      $('tglAutostart').disabled = true;
+      return;
+    }
+    const win = TAURI.window.getCurrentWindow();
+    $('winctl').hidden = false;
+    $('winMin').addEventListener('click', () => win.minimize());
+    $('winMax').addEventListener('click', () => win.toggleMaximize());
+    $('winClose').addEventListener('click', () => win.close());
+    $('winClose').title = S.closeToTray ? 'Close to tray' : 'Quit';
+
+    $('tglTray').checked = S.closeToTray;
+    invoke('set_close_to_tray', { enabled: S.closeToTray }).catch(() => {});
+    $('tglTray').addEventListener('change', (e) => {
+      S.closeToTray = e.target.checked;
+      save();
+      $('winClose').title = S.closeToTray ? 'Close to tray' : 'Quit';
+      invoke('set_close_to_tray', { enabled: S.closeToTray }).catch(() => {});
+    });
+
+    try { $('tglAutostart').checked = await invoke('plugin:autostart|is_enabled'); } catch {}
+    $('tglAutostart').addEventListener('change', async (e) => {
+      try {
+        await invoke(e.target.checked ? 'plugin:autostart|enable' : 'plugin:autostart|disable');
+        toast(e.target.checked ? 'VoxShift will start with Windows (in the tray)' : 'Start with Windows turned off');
+      } catch (err) {
+        e.target.checked = !e.target.checked;
+        toast('Could not change startup setting: ' + (err.message || err), true);
+      }
+    });
+
+    // External links open in the default browser.
+    document.addEventListener('click', (e) => {
+      const a = e.target.closest('a[href^="https://"]');
+      if (!a) return;
+      e.preventDefault();
+      invoke('plugin:opener|open_url', { url: a.href }).catch(() => {});
+    });
+
+    TAURI.event.listen('tray-toggle', () => setPower(!engine.running));
+    TAURI.event.listen('tray-monitor', () => setMonitorOn(!S.monitorOn));
+  }
+
   // ---------- drawer ----------
   function openDrawer(open) {
     $('drawer').classList.toggle('open', open);
@@ -515,9 +694,9 @@
     if (open) { refreshDevices(); updateLatency(); }
   }
   $('btnSettings').addEventListener('click', () => openDrawer(true));
-  $('routeInfo').addEventListener('click', () => openDrawer(true));
   $('btnCloseDrawer').addEventListener('click', () => openDrawer(false));
   $('backdrop').addEventListener('click', () => openDrawer(false));
+
 
   function updateLatency() {
     const ms = engine.latencyMs;
@@ -623,17 +802,21 @@
 
   // ---------- init ----------
   async function init() {
-    $('tglMonitor').checked = S.monitorOn;
     $('tglSuppress').checked = S.noiseSuppression;
     $('btnRecord').disabled = true;
     renderLibrary();
     renderNow();
     renderSliders();
     renderLevelSliders();
+    renderToggles();
     resizeCanvas();
     requestAnimationFrame(draw);
+    await initDesktop();
+    // A previous session ended without undoing the Windows mic swap (crash / power loss): undo it now.
+    await disableSystemMic();
     await unlockLabels();
     await refreshDevices();
+    syncTray();
     if (S.wasOn) setPower(true);
   }
   init();

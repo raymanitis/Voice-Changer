@@ -1,36 +1,48 @@
 # VoxShift
 
-Real-time desktop voice changer for Windows (Electron + Web Audio).
+Real-time voice changer for Windows. Native [Tauri](https://tauri.app) app (Rust + WebView2), about 1 MB to download.
 
 ## Download
 
 **[Download VoxShift-Setup.exe](https://github.com/raymanitis/Voice-Changer/releases/latest/download/VoxShift-Setup.exe)** (Windows 10/11, 64-bit)
 
-Run the installer, pick a folder, and launch VoxShift from the desktop or Start menu shortcut.
+Run the installer and launch VoxShift from the Start menu or desktop.
 The installer is not code-signed, so Windows SmartScreen may warn you: click **More info** → **Run anyway**.
+
+## Features
 
 - 15 ready voices: Normal, Alien, Atari, Clone, Mutation, Fast Mutation, Slow Mutation, Male, Female, Helium, Baby, Radio, Robot, Demon, Cave
 - Every voice is adjustable: pitch, mutation, clones, robot ring-mod, metal resonance, bit-crusher, distortion, static, EQ, echo, reverb, wet/dry mix
 - Save tweaked settings as your own voices
-- Pick mic, output device and a separate "hear myself" monitor
+- **Use in all apps**: replaces your Windows default microphone with the changed voice while VoxShift is live, and puts your real mic back when you stop or quit
+- **Hear myself** button to monitor the changed voice in your headphones
+- Microphone picker right on the main screen
+- Runs in the system tray: closing the window keeps the voice changer working; open it again from the tray icon (bottom right). Tray menu: open, turn voice on/off, hear myself, quit
+- Optional **Start with Windows** (starts hidden in the tray)
 - Noise gate, noise suppression, mic gain, output volume
 - Record the changed voice to a `.webm` file
 
-## Use it as a mic in Discord / games / OBS
+## Use it in Discord, games, OBS and browsers
 
-1. Install a virtual audio cable, e.g. [VB-Audio Cable](https://vb-audio.com/Cable/).
-2. In VoxShift → **Audio setup** → **Send voice to** → `CABLE Input`.
-3. In Discord / the game, select `CABLE Output` as the microphone.
-4. Enable **Hear myself** to monitor through headphones.
+VoxShift sends its audio through a virtual audio cable, which Windows then treats as a microphone.
+
+1. Install the free [VB-Audio Virtual Cable](https://vb-audio.com/Cable/) once and restart VoxShift.
+2. Pick your real microphone in VoxShift.
+3. Turn on **Use in all apps** and press **Start**.
+4. Apps using the **Default** microphone now hear your changed voice. For apps that have a specific mic selected, choose **CABLE Output** there.
 
 ## Develop
 
+Needs Node.js, Rust (stable, MSVC) and the WebView2 runtime (built into Windows 10/11).
+
 ```bash
 npm install
-npm start          # run the app
-npm run dist       # build dist/VoxShift-Setup.exe
+npm run dev        # run the app
+npm run build      # build src-tauri/target/release/bundle/nsis/VoxShift_<version>_x64-setup.exe
 ```
 
-Releases are built by GitHub Actions: push a tag like `v1.0.1` and the workflow builds the installer and attaches it to a GitHub Release.
+- `src/` – UI and audio engine (`engine.js`: Web Audio graph + AudioWorklet DSP, `presets.js`: voices and sliders, `app.js`: UI)
+- `src-tauri/` – Rust shell: tray, window, microphone permission, recording save dialog, autostart
+- `src-tauri/src/winaudio.rs` – Windows default-microphone switching
 
-Source lives in `src/`: `engine.js` (audio graph + AudioWorklet DSP), `presets.js` (voices and slider definitions), `app.js` (UI).
+Releases are built by GitHub Actions: bump the version in `package.json`, `src-tauri/tauri.conf.json` and `src-tauri/Cargo.toml`, then push a tag like `v2.0.1`. The workflow builds the installer and attaches it to a GitHub Release as `VoxShift-Setup.exe`.

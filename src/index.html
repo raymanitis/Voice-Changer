@@ -3,15 +3,13 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <meta http-equiv="Content-Security-Policy"
-        content="default-src 'self'; script-src 'self' blob:; worker-src 'self' blob:; style-src 'self' 'unsafe-inline'; img-src 'self' data:; media-src 'self' blob: mediastream:" />
   <title>VoxShift</title>
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
   <div class="app">
-    <header class="titlebar">
-      <div class="brand">
+    <header class="titlebar" data-tauri-drag-region>
+      <div class="brand" data-tauri-drag-region>
         <div class="logo">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round">
             <path d="M4 10v4M8 6v12M12 9v6M16 4v16M20 10v4" />
@@ -28,6 +26,17 @@
           </svg>
           <span>Audio setup</span>
         </button>
+        <div class="winctl" id="winctl" hidden>
+          <button id="winMin" title="Minimize">
+            <svg viewBox="0 0 12 12"><path d="M2 6h8" stroke="currentColor" stroke-width="1.1" /></svg>
+          </button>
+          <button id="winMax" title="Maximize">
+            <svg viewBox="0 0 12 12" fill="none"><rect x="2" y="2" width="8" height="8" stroke="currentColor" stroke-width="1.1" /></svg>
+          </button>
+          <button id="winClose" class="close" title="Close to tray">
+            <svg viewBox="0 0 12 12"><path d="M2.5 2.5l7 7M9.5 2.5l-7 7" stroke="currentColor" stroke-width="1.1" /></svg>
+          </button>
+        </div>
       </div>
     </header>
 
@@ -64,9 +73,24 @@
           </div>
           <canvas id="viz"></canvas>
           <div class="hero-bottom">
-            <div class="meter"><span>IN</span><div class="bar"><i id="meterIn"></i></div></div>
-            <div class="meter"><span>OUT</span><div class="bar"><i id="meterOut"></i></div></div>
-            <button class="route" id="routeInfo" title="Change devices"></button>
+            <div class="meters">
+              <div class="meter"><span>IN</span><div class="bar"><i id="meterIn"></i></div></div>
+              <div class="meter"><span>OUT</span><div class="bar"><i id="meterOut"></i></div></div>
+            </div>
+            <div class="quick">
+              <label class="quick-select" title="Microphone used by VoxShift">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="9" y="3" width="6" height="11" rx="3" /><path d="M5 11a7 7 0 0 0 14 0M12 18v3" /></svg>
+                <select id="quickInput"></select>
+              </label>
+              <button class="toggle-btn" id="qMonitor" title="Hear your changed voice in your headphones">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 15v-3a8 8 0 0 1 16 0v3" /><rect x="3" y="14" width="5" height="7" rx="1.5" /><rect x="16" y="14" width="5" height="7" rx="1.5" /></svg>
+                <span>Hear myself</span>
+              </button>
+              <button class="toggle-btn" id="qSystem" title="Replace your Windows microphone so every app (Discord, games, browser) hears the changed voice">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="12" rx="2" /><path d="M8 20h8M12 16v4" /></svg>
+                <span>Use in all apps</span>
+              </button>
+            </div>
           </div>
         </div>
 
@@ -134,13 +158,30 @@
           </div>
         </section>
 
+        <section class="group">
+          <h3>Windows</h3>
+          <div class="row-between">
+            <span class="field-label">Use in all apps</span>
+            <label class="switch"><input type="checkbox" id="tglSystem" /><i></i></label>
+          </div>
+          <p class="muted small">While VoxShift is live, your Windows default microphone becomes the virtual cable, so Discord, games and browsers hear the changed voice. Your real mic is put back when you stop or quit.</p>
+          <div class="row-between">
+            <span class="field-label">Keep running in tray when closed</span>
+            <label class="switch"><input type="checkbox" id="tglTray" /><i></i></label>
+          </div>
+          <div class="row-between">
+            <span class="field-label">Start with Windows</span>
+            <label class="switch"><input type="checkbox" id="tglAutostart" /><i></i></label>
+          </div>
+        </section>
+
         <section class="group info">
-          <h3>Use in Discord, games &amp; OBS</h3>
+          <h3>How it works</h3>
           <ol>
-            <li>Install a free virtual audio cable, e.g. <a href="https://vb-audio.com/Cable/" target="_blank">VB-Audio Cable</a>.</li>
-            <li>Set <b>Send voice to</b> to <b>CABLE Input</b>.</li>
-            <li>In Discord / your game, pick <b>CABLE Output</b> as the microphone.</li>
-            <li>Turn on <b>Hear myself</b> to monitor the effect.</li>
+            <li>Install the free <a href="https://vb-audio.com/Cable/" target="_blank">VB-Audio Virtual Cable</a> once, then restart VoxShift.</li>
+            <li>Pick your real microphone above.</li>
+            <li>Turn on <b>Use in all apps</b> and press <b>Start</b>.</li>
+            <li>Apps set to the <b>Default</b> mic now get your changed voice. Apps with a fixed mic: choose <b>CABLE Output</b>.</li>
           </ol>
           <p class="muted small" id="latencyInfo"></p>
         </section>

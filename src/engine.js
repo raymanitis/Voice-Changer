@@ -377,6 +377,7 @@ class VoxEngine {
     this.recorder.ondataavailable = (e) => e.data.size && this.chunks.push(e.data);
     this.recorder.onstop = () => {
       const blob = new Blob(this.chunks, { type });
+      if (this.onRecorded) return this.onRecorded(blob);
       const a = document.createElement('a');
       const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
       a.href = URL.createObjectURL(blob);
